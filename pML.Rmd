@@ -1,0 +1,110 @@
+---
+title: "Practical Machine Learning Project"
+author: "Adrian Badica"
+date: "Saturday, November 22, 2014"
+output: html_document
+---
+
+### Executive Summary
+
+The goal of this report is to use machine learning algorithms and methods in order to best classify if activities recorded from a group of volunteers were executed correctly or not. The dataset that will be used comes from http://groupware.les.inf.puc-rio.br/har.
+
+Decision trees and random forests were used to build the predictive models. The one relying on the random forest algorithm was chosen dueto the smallest out of sample error rate.
+
+
+### 1. Data loading, Data Processing, Cross Validation
+
+
+First we will load the data into R :
+```{r}
+set.seed(1)
+training <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=TRUE, sep=",", na.strings=c("","#DIV/0!","NA"))
+test <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE, sep=",", na.strings=c("","#DIV/0!","NA"))
+dim(training)
+```
+
+Taking a first look at the dataset we observe that there many columns with mostly missing values. We will drop these columns from the dataframe.
+We will also check if there are any variables with near zero variance. We will discard columns with no usable prediction value (such as the index, etc.) to create the tidy dataset.
+
+```{r}
+
+missingvalues <- sapply(training, function(x) sum(is.na(x)))
+tmp <- training
+tmp <- tmp[,-which(as.numeric(colSums(is.na(tmp)))>1)]
+dim(tmp)
+```
+
+```{r}
+require(caret)
+nzv <- nearZeroVar(tmp,saveMetrics=TRUE)
+View(nzv)
+```
+
+```{r}
+dataset <- tmp[,-c(1,3,4,5,6,7)]
+```
+
+For cross validation we will randomly split the newly created dataset into a training and a test set. The test set will be used to test the accuracy of our models.
+
+```{r}
+library(caret)
+inTrain <- createDataPartition(dataset$classe, p=0.7, list=FALSE)
+training_set <- dataset[inTrain,]
+test_set <- dataset[-inTrain,]
+```
+
+
+### 2.Prediction Models
+
+The first model that we will build uses decision trees :
+```{r}
+library(caret)
+modFit <- train(classe~., method="rpart", data=training_set)
+print(modFit$finalModel)
+library(rattle)
+fancyRpartPlot(modFit$finalModel)
+```
+
+Applying the model to the test dataset shows that the fit is poor with an out of sample error of 51%.
+```{r}
+library(caret)
+pred <- predict(modFit,test_set)
+confusionMatrix(pred,test_set$classe)
+
+```
+The next model that we will build is using the random forests algorithm :
+
+```{r}
+library(caret)
+control <- trainControl(method="cv", number=5)
+modFit2 <- train(classe~., method="rf", trControl=control, data=training_set)
+print(modFit2$finalModel)
+pred2 <- predict(modFit2,test_set)
+confusionMatrix(pred2,test_set$classe)
+```
+The out of sample error is 1%.
+
+
+## Applying the model to the 20 test cases
+
+```{r}
+tmp2 <- test
+tmp2 <- tmp2[,-which(as.numeric(colSums(is.na(tmp2)))>1)]
+dataset2 <- tmp2[,-c(1,3,4,5,6,7)]
+pred3 <- predict(modFit2,dataset2)
+answers <- as.vector(pred3)
+```
+Professor's file writing function :
+
+```{r, eval=FALSE}
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
